@@ -53,11 +53,13 @@ whitehat-challenge-a/
 ├── .gitignore               # Exclusions (venv, *.db, __pycache__, .env)
 ├── venv/                    # Environnement virtuel Python (NON commité)
 ├── requirements.txt         # Dépendances figées (pip freeze)
-├── CLAUDE.md                # Ce fichier
-└── README.md                # Doc utilisateur (sera enrichi en étape 8)
+├── CLAUDE.md                # Document maître du projet
+├── README.md                # Doc utilisateur (sera enrichi en étape 8)
+├── interview-prep.md        # Fiche de révision Q&R pour l'entretien
+├── schema.sql               # Schéma SQL pur (table products + index)
+├── init_db.py               # Script Python qui exécute schema.sql
+└── database.db              # Base SQLite générée (NON commitée)
 ```
-
-(Sera complétée à chaque ajout de fichier.)
 
 ---
 
@@ -66,7 +68,7 @@ whitehat-challenge-a/
 | # | Étape | Statut |
 |---|---|---|
 | 1 | Setup environnement (venv, Flask, git) | ✅ FAIT |
-| 2 | Schéma DB SQLite + script init | ⬜ À faire |
+| 2 | Schéma DB SQLite + script init | ✅ FAIT |
 | 3 | App Flask minimale qui tourne | ⬜ À faire |
 | 4 | Page insertion (volontairement vulnérable) | ⬜ À faire |
 | 5 | Page recherche (volontairement vulnérable) | ⬜ À faire |
@@ -88,6 +90,12 @@ whitehat-challenge-a/
 | Approche "vulnérable d'abord, sécurisé ensuite" | Permet de voir les attaques marcher, puis de prouver que la protection les bloque. Argument fort en entretien. |
 | Commits git en anglais | Convention pro standard. |
 | Pas de déploiement Vercel | SQLite incompatible serverless (filesystem éphémère). Livraison = lien GitHub + run local. |
+| Prix stocké en `INTEGER` (centimes) | Évite les erreurs d'arrondi des floats (ex : `0.1+0.2≠0.3`). Standard bancaire. |
+| `CHECK` constraints en DB | Defense in depth : si la validation Flask est bypassée, la DB elle-même rejette les données invalides (prix négatif, nom vide, nom > 200 chars). |
+| `created_at DEFAULT CURRENT_TIMESTAMP` | Audit trail : permet de tracer quand un produit a été inséré (utile en cas d'incident). |
+| Schéma SQL séparé du code Python (`schema.sql` + `init_db.py`) | Lisibilité, auditabilité par un DBA, séparation des préoccupations. |
+| Index sur `name` | Performance des recherches en étape 5 (la table de prod peut grossir). |
+| `AUTOINCREMENT` sur l'id | IDs jamais réutilisés → traçabilité des logs préservée même après suppression. |
 
 ---
 
@@ -121,9 +129,18 @@ pip install -r requirements.txt
 
 # Vérifier la version de Flask et Python actives
 python -c "import flask, sys; print(f'Flask {flask.__version__} on Python {sys.version.split()[0]}')"
+
+# Initialiser (ou ré-initialiser) la base de données depuis schema.sql
+python init_db.py
+
+# Inspecter la DB depuis la CLI
+python -c "import sqlite3; c=sqlite3.connect('database.db'); [print(r) for r in c.execute('PRAGMA table_info(products)')]"
+
+# Compter les produits en base
+python -c "import sqlite3; c=sqlite3.connect('database.db'); print(c.execute('SELECT COUNT(*) FROM products').fetchone()[0])"
 ```
 
-(Lancement serveur, init DB, etc. seront ajoutés aux prochaines étapes.)
+(Lancement serveur sera ajouté à l'étape 3.)
 
 ---
 
@@ -142,6 +159,29 @@ R : Le venv contient des binaires Python compilés pour l'OS et l'architecture s
 
 **Q : Pourquoi spécifier Python 3.14 et pas la version par défaut du système ?**
 R : Le Python 3.9.6 fourni par macOS est en fin de vie depuis octobre 2025 (plus de patches de sécurité). Utiliser une version maintenue est un réflexe sécurité de base.
+
+### Étape 2 (DB schema)
+
+**Q : Pourquoi stocker le prix en INTEGER (centimes) plutôt qu'en REAL/FLOAT ?**
+R : Les nombres flottants ont des erreurs d'arrondi (`0.1 + 0.2 = 0.30000000000000004` en IEEE 754). En finance ou e-commerce, c'est inacceptable. Le standard bancaire est de stocker en plus petite unité monétaire (centimes) en INTEGER, puis convertir à l'affichage.
+
+**Q : Tu valides déjà les inputs côté Flask, pourquoi mettre AUSSI des CHECK constraints en DB ?**
+R : Defense in depth. Si un jour Flask est bypassé (bug dans la validation, autre app qui tape directement la DB, injection partielle), la DB elle-même refuse les données invalides. C'est la dernière ligne de défense. J'ai testé : tentatives d'INSERT avec prix négatif, nom vide, nom > 200 chars, name NULL → toutes bloquées par la DB.
+
+**Q : Pourquoi `executescript()` plutôt que `execute()` dans `init_db.py` ?**
+R : `execute()` ne permet qu'une seule requête SQL à la fois. `executescript()` accepte un script multi-requêtes (CREATE TABLE + CREATE INDEX dans le même fichier). C'est exactement ce qu'on a dans `schema.sql`.
+
+**Q : Pourquoi `with sqlite3.connect(...) as conn:` ?**
+R : Context manager. Garantit que la connexion est fermée proprement même si une exception est levée pendant le bloc. Évite les fuites de ressources (file descriptors, locks DB).
+
+**Q : Pourquoi `CREATE TABLE IF NOT EXISTS` plutôt que juste `CREATE TABLE` ?**
+R : Idempotence. Le script peut être lancé plusieurs fois sans erreur. Utile en dev (re-run après modif), critique en prod (migrations).
+
+**Q : Pourquoi un index sur `name` ?**
+R : La page de recherche (étape 5) va faire des `WHERE name LIKE ...`. Sans index, c'est un full table scan O(n). Avec index, c'est O(log n). Sur une table à 100 000 produits, c'est la différence entre 500ms et 2ms.
+
+**Q : Pourquoi `AUTOINCREMENT` plutôt que juste `INTEGER PRIMARY KEY` ?**
+R : Sans AUTOINCREMENT, SQLite peut réutiliser un id supprimé. Si l'id 42 référençait le produit "Laptop", qu'on le supprime, et qu'un nouveau produit "Souris" prend l'id 42, tous mes anciens logs mentionnant "produit 42 = Laptop" deviennent trompeurs. AUTOINCREMENT garantit que les ids ne sont jamais réutilisés → traçabilité préservée.
 
 (Sera enrichi à chaque étape.)
 
