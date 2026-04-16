@@ -56,6 +56,7 @@ whitehat-challenge-a/
 ├── CLAUDE.md                # Document maître du projet
 ├── README.md                # Doc utilisateur (sera enrichi en étape 8)
 ├── interview-prep.md        # Fiche de révision Q&R pour l'entretien
+├── security-audit.md        # Mapping code ↔ référentiel White-Hat (en anglais)
 ├── schema.sql               # Schéma SQL pur (table products + index)
 ├── init_db.py               # Script Python qui exécute schema.sql
 └── database.db              # Base SQLite générée (NON commitée)
