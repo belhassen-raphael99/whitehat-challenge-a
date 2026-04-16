@@ -44,8 +44,10 @@ The reference defines the following application-level requirements:
 | 4a | Minimal DB user privileges | SQLite is file-based and single-user — no concept of DB user. | OK (N/A by design) | Mention in interview that on PostgreSQL/MySQL we would use a dedicated user with `GRANT INSERT, SELECT` only — never `DROP`, `ALTER`. |
 | 4b | Encrypted credentials (AES-256) | Not applicable: SQLite has no DB credentials. | OK (N/A by design) | Mention in interview. |
 | 5 | Parameterized queries | Not implemented yet — the project intentionally starts with vulnerable string-concatenated queries (steps 4-5) before the secure rewrite (step 6). | TO DO (step 6) | **Critical item.** Will be addressed in step 6.1 — first vulnerability to fix. |
-| 6a | TLS / HTTPS channel | Flask dev server runs HTTP. Not configured for HTTPS. | Deferred | Document in step 6 (Security Misconfiguration) and final README. Production deployment would terminate TLS at a reverse proxy (nginx/Cloudflare) or use `gunicorn` + cert. |
+| 6a | TLS / HTTPS channel | Flask dev server runs HTTP on 127.0.0.1:5001. Not configured for HTTPS. | Deferred | Document in step 6 (Security Misconfiguration) and final README. Production deployment would terminate TLS at a reverse proxy (nginx/Cloudflare) or use `gunicorn` + cert. |
 | 6b | Authentication mechanism | No authentication in scope. | OK (N/A documented) | Mention in interview. |
+| 7  | Server header information disclosure (added at step 3) | `curl -i` reveals `Server: Werkzeug/3.1.8 Python/3.14.4` — leaks framework, version, and Python version. CWE-200. | TO DO (step 6) | Strip or override `Server` header via Flask response middleware. |
+| 8  | Werkzeug interactive debugger (added at step 3) | `debug=True` is enabled for local development. The Werkzeug debugger allows arbitrary Python execution if the app is reachable from the network. Currently mitigated by `host=127.0.0.1` (loopback only). | OK in dev (mitigated by binding) — TO DO for prod | In step 6, force `debug=False` for any non-dev environment, document in README. |
 
 ---
 
@@ -53,9 +55,9 @@ The reference defines the following application-level requirements:
 
 | Status | Count | Items |
 |---|---|---|
-| OK (compliant or N/A documented) | 7 | 1, 2, 3b, 3d, 4a, 4b, 6b |
-| Partial (DB layer only, Flask layer pending) | 1 | 3a, 3c |
-| TO DO (planned for step 6) | 1 | 5 (parameterized queries) |
+| OK (compliant or N/A documented) | 8 | 1, 2, 3b, 3d, 4a, 4b, 6b, 8 (dev only) |
+| Partial (DB layer only, Flask layer pending) | 2 | 3a, 3c |
+| TO DO (planned for step 6) | 2 | 5 (parameterized queries), 7 (Server header) |
 | Deferred (production-only) | 1 | 6a (TLS) |
 | Non-compliant | 0 | — |
 

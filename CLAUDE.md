@@ -59,6 +59,7 @@ whitehat-challenge-a/
 ├── security-audit.md        # Mapping code ↔ référentiel White-Hat (en anglais)
 ├── schema.sql               # Schéma SQL pur (table products + index)
 ├── init_db.py               # Script Python qui exécute schema.sql
+├── app.py                   # App Flask (route / pour l'instant)
 └── database.db              # Base SQLite générée (NON commitée)
 ```
 
@@ -70,7 +71,7 @@ whitehat-challenge-a/
 |---|---|---|
 | 1 | Setup environnement (venv, Flask, git) | ✅ FAIT |
 | 2 | Schéma DB SQLite + script init | ✅ FAIT |
-| 3 | App Flask minimale qui tourne | ⬜ À faire |
+| 3 | App Flask minimale qui tourne | ✅ FAIT |
 | 4 | Page insertion (volontairement vulnérable) | ⬜ À faire |
 | 5 | Page recherche (volontairement vulnérable) | ⬜ À faire |
 | 6 | Sécurisation des 6 vulnérabilités identifiées | ⬜ À faire |
@@ -97,6 +98,10 @@ whitehat-challenge-a/
 | Schéma SQL séparé du code Python (`schema.sql` + `init_db.py`) | Lisibilité, auditabilité par un DBA, séparation des préoccupations. |
 | Index sur `name` | Performance des recherches en étape 5 (la table de prod peut grossir). |
 | `AUTOINCREMENT` sur l'id | IDs jamais réutilisés → traçabilité des logs préservée même après suppression. |
+| Port 5001 (pas 5000) | Le port 5000 est occupé par AirPlay Receiver depuis macOS Monterey → conflit silencieux. |
+| `host=127.0.0.1` (pas `0.0.0.0`) | Bind localhost uniquement. Le serveur n'est pas exposé sur le réseau pendant le dev. |
+| `debug=True` en dev (à fixer en étape 6 pour prod) | Auto-reload + page debug interactive. ⚠️ Werkzeug debugger permet l'exécution de code arbitraire si exposé : strictement DEV ONLY. |
+| `python app.py` plutôt que `flask run` | Toute la config est explicite dans le code (host, port, debug). Facilite la défense en entretien et l'onboarding. |
 
 ---
 
@@ -139,9 +144,14 @@ python -c "import sqlite3; c=sqlite3.connect('database.db'); [print(r) for r in 
 
 # Compter les produits en base
 python -c "import sqlite3; c=sqlite3.connect('database.db'); print(c.execute('SELECT COUNT(*) FROM products').fetchone()[0])"
-```
 
-(Lancement serveur sera ajouté à l'étape 3.)
+# Lancer le serveur Flask (dev) sur http://127.0.0.1:5001
+python app.py
+# Arrêter avec Ctrl+C
+
+# Tester l'endpoint en CLI (sans navigateur)
+curl -i http://127.0.0.1:5001/
+```
 
 ---
 
@@ -183,6 +193,23 @@ R : La page de recherche (étape 5) va faire des `WHERE name LIKE ...`. Sans ind
 
 **Q : Pourquoi `AUTOINCREMENT` plutôt que juste `INTEGER PRIMARY KEY` ?**
 R : Sans AUTOINCREMENT, SQLite peut réutiliser un id supprimé. Si l'id 42 référençait le produit "Laptop", qu'on le supprime, et qu'un nouveau produit "Souris" prend l'id 42, tous mes anciens logs mentionnant "produit 42 = Laptop" deviennent trompeurs. AUTOINCREMENT garantit que les ids ne sont jamais réutilisés → traçabilité préservée.
+
+### Étape 3 (Flask app)
+
+**Q : Pourquoi port 5001 et pas 5000 ?**
+R : Sur macOS depuis Monterey, AirPlay Receiver écoute sur le port 5000 par défaut. Si on lance Flask sur 5000, il y a conflit silencieux : soit Flask refuse de démarrer (port pris), soit pire, certaines requêtes peuvent atterrir sur AirPlay. C'est un cas concret de Security Misconfiguration → on utilise 5001 pour être safe.
+
+**Q : Pourquoi `host="127.0.0.1"` plutôt que `"0.0.0.0"` ?**
+R : `127.0.0.1` (loopback) bind le serveur uniquement à la machine locale. Personne sur le réseau (WiFi, LAN) ne peut y accéder. `0.0.0.0` bind toutes les interfaces → exposition réseau. En dev avec `debug=True`, exposer sur 0.0.0.0 ouvrirait le Werkzeug debugger à n'importe qui sur le WiFi → exécution de code arbitraire à distance. C'est un piège classique.
+
+**Q : Pourquoi `debug=True` est dangereux en prod ?**
+R : Le mode debug active le **Werkzeug interactive debugger**. En cas d'exception, il affiche une page web avec une console Python interactive. Si exposée à Internet, n'importe qui peut **exécuter du code Python arbitraire sur le serveur** depuis son navigateur (avec un PIN qu'on peut casser). C'est une RCE pré-authentifiée. Strictement DEV ONLY. → On le force à False en étape 6.
+
+**Q : Tu as testé ton app, qu'est-ce que tu as vu de problématique dans la réponse HTTP ?**
+R : Le header `Server: Werkzeug/3.1.8 Python/3.14.4` révèle ma stack et mes versions. Information Disclosure (CWE-200). Un attaquant peut chercher des CVE spécifiques à ces versions. → Sera fixé en étape 6 (Sensitive Data Exposure).
+
+**Q : Pourquoi `python app.py` plutôt que `flask run` ?**
+R : Avec `python app.py`, toute la config (host, port, debug) est explicite dans le code Python. `flask run` cache la config dans des variables d'environnement (`FLASK_APP`, `FLASK_DEBUG`, etc.) → moins lisible, plus de "magie". Pour un projet pédagogique destiné à être audité, l'explicite gagne.
 
 (Sera enrichi à chaque étape.)
 

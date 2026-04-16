@@ -193,7 +193,68 @@ pip install -r requirements.txt
 
 # ÉTAPE 3 — App Flask minimale
 
-*(à compléter)*
+## Q3.1 — Pourquoi port 5001 et pas 5000 ?
+
+🟢 **Réponse minimale :**
+"Sur macOS depuis Monterey, AirPlay Receiver écoute sur 5000 par défaut. Conflit silencieux. J'ai utilisé 5001 pour éviter le piège."
+
+🔵 **Pour aller plus loin :**
+"C'est un exemple parfait de Security Misconfiguration dans la vraie vie : un dev qui ne le sait pas peut croire que son app tourne alors que c'est AirPlay qui répond à certaines requêtes. Bug très subtil à diagnostiquer."
+
+---
+
+## Q3.2 — Pourquoi `host="127.0.0.1"` et pas `"0.0.0.0"` ?
+
+🟢 **Réponse minimale :**
+"127.0.0.1 (loopback) limite l'accès à la machine locale. 0.0.0.0 expose le serveur sur toutes les interfaces réseau (WiFi, Ethernet, etc.). En dev avec debug=True, exposer en 0.0.0.0 ouvrirait le Werkzeug debugger à n'importe qui sur le WiFi → RCE."
+
+🔵 **Pour aller plus loin :**
+"En cybersécurité, la règle est : **principe de moindre exposition**. On expose le minimum nécessaire. En dev local, je n'ai besoin de personne d'autre que moi → 127.0.0.1 suffit. En prod, ce serait un reverse proxy (nginx) qui s'exposerait sur 0.0.0.0:443 et forwarderait à mon Flask sur 127.0.0.1:5001."
+
+---
+
+## Q3.3 — Qu'est-ce que le Werkzeug debugger et pourquoi c'est dangereux ?
+
+🟢 **Réponse minimale :**
+"Quand `debug=True`, Flask affiche une page d'erreur interactive avec une console Python en cas d'exception. Cette console permet d'exécuter du code arbitraire sur le serveur. Si l'app est exposée à Internet en mode debug → RCE pré-authentifiée."
+
+🔵 **Pour aller plus loin :**
+"Le debugger est protégé par un PIN, mais ce PIN est dérivé de manière déterministe d'infos serveur (username, machine ID, app path). Si l'attaquant peut leak ces infos via une autre vuln (LFI, info disclosure), il peut **calculer le PIN** et accéder à la console. Il y a des CVE et exploits publics. Donc règle absolue : `debug=False` en prod, point final."
+
+⚠️ **Piège :** ne dis pas "le debugger est sécurisé par un PIN". C'est faux.
+
+---
+
+## Q3.4 — Qu'est-ce qu'on peut déduire d'un header `Server: Werkzeug/3.1.8 Python/3.14.4` ?
+
+🟢 **Réponse minimale :**
+"C'est de l'Information Disclosure (CWE-200). Ça révèle ma stack (Flask) et mes versions exactes. Un attaquant peut chercher des CVE spécifiques à ces versions et adapter ses payloads à Jinja2 (templating Flask)."
+
+🔵 **Pour aller plus loin :**
+"Plus large : ça permet aussi du **mass scanning**. Un attaquant qui découvre une CVE Werkzeug 3.1.8 peut scanner tout Internet à la recherche de ce header pour trouver des cibles. Bonne pratique : remplacer ou supprimer le header `Server`. On le fera en étape 6 via un middleware Flask."
+
+---
+
+## Q3.5 — Pourquoi `python app.py` plutôt que `flask run` ?
+
+🟢 **Réponse minimale :**
+"Toute la config (host, port, debug) est explicite dans le code. `flask run` cache la config dans des variables d'environnement → moins lisible, plus de magie."
+
+🔵 **Pour aller plus loin :**
+"Pour un projet d'audit, la lisibilité l'emporte sur l'idiomatisme. En prod réelle on utiliserait Gunicorn ou uWSGI de toute façon, donc `flask run` n'est pas non plus la cible finale."
+
+---
+
+## Q3.6 — Si tu déployais en prod, qu'est-ce que tu changerais dans app.py ?
+
+🟢 **Réponse minimale (4 changements) :**
+1. `debug=False`
+2. Remplacer le serveur dev (Werkzeug) par un WSGI prod (Gunicorn ou uWSGI)
+3. Mettre un reverse proxy (nginx ou Cloudflare) devant pour TLS termination
+4. Supprimer le header `Server` ou le remplacer par une valeur générique
+
+🔵 **Pour aller plus loin :**
+"J'ajouterais aussi : variables d'env via `.env` (jamais en dur), logs structurés (JSON), monitoring (Sentry pour les erreurs, Prometheus pour les métriques), et rate-limiting (Flask-Limiter). Tout ça sort du scope du take-home mais je peux en parler."
 
 ---
 
