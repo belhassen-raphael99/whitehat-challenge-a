@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card">
+  <h1>Product Manager</h1>
+  <p class="lead">
+    Minimal product management application built as part of the Whitehat
+    take-home challenge. Insert new products and search the catalog.
+  </p>
+
+  <div class="cta-row">
+    <a class="cta cta-primary" href="{{ url_for('insert') }}">Insert a product</a>
+    <a class="cta" href="#">Search products (coming step 5)</a>
+  </div>
+</div>
+{% endblock %}

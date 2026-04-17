@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+
+{% block title %}Insert product — Whitehat Challenge A{% endblock %}
+
+{% block content %}
+<div class="card">
+  <h2>Add a product</h2>
+
+  {% if message %}
+    <div class="flash flash-success">{{ message }}</div>
+  {% endif %}
+  {% if error %}
+    <div class="flash flash-error">{{ error }}</div>
+  {% endif %}
+
+  <form method="POST" action="{{ url_for('insert') }}">
+    <div class="field">
+      <label for="name">Product name</label>
+      <span class="hint">Up to 200 characters</span>
+      <input type="text" id="name" name="name" required>
+    </div>
+
+    <div class="field">
+      <label for="price">Price (in cents)</label>
+      <span class="hint">Stored as INTEGER to avoid float rounding errors. e.g. 9.99 EUR &rarr; 999</span>
+      <input type="number" id="price" name="price" min="0" step="1" required>
+    </div>
+
+    <button type="submit">Insert product</button>
+  </form>
+</div>
+{% endblock %}

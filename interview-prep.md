@@ -258,9 +258,74 @@ pip install -r requirements.txt
 
 ---
 
-# ÉTAPE 4-5 — Pages vulnérables (insertion + recherche)
+# ÉTAPE 4 — Page d'insertion vulnérable
 
-*(à compléter)*
+## Q4.1 — Pourquoi écrire du code volontairement vulnérable ?
+
+🟢 **Réponse minimale :**
+"Pour pouvoir prouver que ma protection fonctionne. Je joue l'attaque sur le code vulnérable, je montre qu'elle marche, je sécurise, je rejoue l'attaque, je montre qu'elle échoue. C'est la preuve concrète."
+
+🔵 **Pour aller plus loin :**
+"C'est aussi la méthode des cours de secure coding sérieux (PortSwigger Web Security Academy, OWASP Juice Shop). Sans cette confrontation, on apprend à écrire des bonnes pratiques sans comprendre **contre quoi** on se défend."
+
+---
+
+## Q4.2 — Décris la SQL Injection que tu as démontrée
+
+🟢 **Réponse minimale :**
+"Payload : `Hack', 0); DROP TABLE products; --`. La requête construite par concaténation devient `INSERT INTO products (name, price) VALUES ('Hack', 0); DROP TABLE products; --', 0)`. Le `'` ferme la string, le `;` enchaîne une nouvelle commande, le `DROP TABLE` détruit la table, le `--` neutralise la fin. Résultat : table effacée."
+
+🔵 **Pour aller plus loin :**
+"J'ai utilisé `executescript()` au lieu de `execute()` pour reproduire le pire cas réaliste. `execute()` n'autorise qu'une seule instruction SQL — un attaquant qui tombe sur du code utilisant `execute()` ne peut pas DROP TABLE, mais peut quand même faire d'autres dégâts (UNION SELECT pour exfiltrer, OR 1=1 pour bypass auth)."
+
+⚠️ **Piège :** ne dis pas "j'ai exploité executescript". L'exécutsript n'est PAS la vuln — la vuln est la **concaténation**. executescript juste **amplifie** son impact.
+
+---
+
+## Q4.3 — Décris l'XSS stocké que tu as démontré
+
+🟢 **Réponse minimale :**
+"J'ai stocké `<img src=x onerror=alert(1)>` comme nom de produit. La DB l'a accepté (texte conforme aux CHECK). Quand la page de recherche affichera ce nom sans escape, le navigateur exécutera le JS de l'attribut `onerror`."
+
+🔵 **Pour aller plus loin :**
+"C'est de la **stored XSS** : le payload reste en DB et déclenche pour CHAQUE visiteur de la page. Variante la plus grave car elle persiste. Variante moins grave : reflected XSS (payload dans l'URL, ne touche que la victime du lien)."
+
+⚠️ **Pourquoi `<img onerror>` et pas `<script>` ?** Parce que mon payload SQL contenait initialement des `'` qui cassaient ma syntaxe SQL. `<img src=x onerror=alert(1)>` ne contient aucun quote → traverse la SQL sans dommage.
+
+---
+
+## Q4.4 — Pourquoi les CHECK DB n'ont pas bloqué l'XSS ?
+
+🟢 **Réponse minimale :**
+"Une contrainte ne couvre qu'un type d'attaque. CHECK valide la longueur, le signe, les valeurs énumérées. Elle ne sait pas ce qu'est du HTML. XSS exige un escape à l'affichage, pas une validation à l'entrée."
+
+🔵 **Pour aller plus loin :**
+"Idéalement, on combine les deux : valider à l'entrée (rejeter `<script>` dans un nom de produit, par exemple), ET échapper à la sortie (Jinja2 auto-escape). Si on ne devait choisir qu'un seul, l'escape à la sortie est plus robuste car il fonctionne quel que soit l'input."
+
+---
+
+## Q4.5 — Comment tu vas fixer ces vulns en étape 6 ?
+
+🟢 **Réponse minimale (4 fixes) :**
+1. **SQLi** : passer à `cursor.execute("INSERT ... VALUES (?, ?)", (name, price))` — paramètres séparés, jamais concaténés.
+2. **XSS** : Jinja2 escape par défaut, je laisse faire (et je vérifie qu'aucun `|safe` traîne).
+3. **CSRF** : ajouter Flask-WTF avec `CSRFProtect(app)` + `{{ form.csrf_token }}` dans le template.
+4. **Info disclosure** : remplacer le message d'erreur brut par un message générique côté client + log côté serveur.
+
+🔵 **Pour aller plus loin :**
+"En bonus : ajouter validation Flask explicite (whitelist) en plus des CHECK DB (defense in depth), et headers de sécurité (CSP, X-Frame-Options, X-Content-Type-Options) via un middleware after_request."
+
+---
+
+## Q4.6 — C'est quoi `executescript()` vs `execute()` vs `executemany()` ?
+
+🟢 **Réponse minimale :**
+- `execute(sql, params)` : 1 instruction SQL, paramétrable. Standard.
+- `executemany(sql, list_of_params)` : 1 instruction, exécutée N fois avec différents params. Bulk insert.
+- `executescript(sql)` : N instructions séparées par `;`, **non-paramétrable**. Pour scripts d'init.
+
+🔵 **Pour aller plus loin :**
+"`executescript` ne supporte pas les paramètres, donc c'est le candidat parfait pour les schémas (un fichier `.sql` lu et exécuté). Mais l'utiliser pour traiter de l'input utilisateur est dangereux : il transforme une SQLi 'limitée' (1 statement) en SQLi 'totale' (N statements). C'est exactement ce que j'ai démontré dans la version vulnérable."
 
 ---
 

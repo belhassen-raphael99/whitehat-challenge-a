@@ -43,7 +43,10 @@ The reference defines the following application-level requirements:
 | 3d | Permission check before action | No authenticated users in scope. | OK (N/A documented) | Mention in interview. |
 | 4a | Minimal DB user privileges | SQLite is file-based and single-user — no concept of DB user. | OK (N/A by design) | Mention in interview that on PostgreSQL/MySQL we would use a dedicated user with `GRANT INSERT, SELECT` only — never `DROP`, `ALTER`. |
 | 4b | Encrypted credentials (AES-256) | Not applicable: SQLite has no DB credentials. | OK (N/A by design) | Mention in interview. |
-| 5 | Parameterized queries | Not implemented yet — the project intentionally starts with vulnerable string-concatenated queries (steps 4-5) before the secure rewrite (step 6). | TO DO (step 6) | **Critical item.** Will be addressed in step 6.1 — first vulnerability to fix. |
+| 5 | Parameterized queries | Step 4 implements the deliberately vulnerable version: `f"INSERT INTO products (name, price) VALUES ('{name}', {price})"` executed via `executescript()`. Demonstrated to drop the `products` table with payload `Hack', 0); DROP TABLE products; --`. | EXPOSED (step 4) — TO DO (step 6) | Step 6.1: replace with `execute("INSERT ... VALUES (?, ?)", (name, price))`. |
+| 5b | Stored XSS protection | Step 4 stores user input verbatim. Demonstrated by inserting `<img src=x onerror=alert(1)>` as a product name — accepted by all DB CHECK constraints (it is just text). Will fire when displayed in step 5 search results without escaping. | EXPOSED (step 4-5) — TO DO (step 6) | Step 6.2: rely on Jinja2 auto-escape (no `\|safe`), plus add server-side validation. |
+| 5c | CSRF protection | The `/insert` form has no CSRF token. Any cross-origin POST can insert products. | EXPOSED (step 4) — TO DO (step 6) | Step 6.3: add Flask-WTF with `CSRFProtect(app)`. |
+| 5d | Generic error messages | Raw `sqlite3.Error` is rendered to the client on insert failure (CWE-209 information exposure through error message). | EXPOSED (step 4) — TO DO (step 6) | Step 6: catch DB errors, log details server-side, return generic message to client. |
 | 6a | TLS / HTTPS channel | Flask dev server runs HTTP on 127.0.0.1:5001. Not configured for HTTPS. | Deferred | Document in step 6 (Security Misconfiguration) and final README. Production deployment would terminate TLS at a reverse proxy (nginx/Cloudflare) or use `gunicorn` + cert. |
 | 6b | Authentication mechanism | No authentication in scope. | OK (N/A documented) | Mention in interview. |
 | 7  | Server header information disclosure (added at step 3) | `curl -i` reveals `Server: Werkzeug/3.1.8 Python/3.14.4` — leaks framework, version, and Python version. CWE-200. | TO DO (step 6) | Strip or override `Server` header via Flask response middleware. |
@@ -57,7 +60,8 @@ The reference defines the following application-level requirements:
 |---|---|---|
 | OK (compliant or N/A documented) | 8 | 1, 2, 3b, 3d, 4a, 4b, 6b, 8 (dev only) |
 | Partial (DB layer only, Flask layer pending) | 2 | 3a, 3c |
-| TO DO (planned for step 6) | 2 | 5 (parameterized queries), 7 (Server header) |
+| EXPOSED (intentional, will be fixed in step 6) | 4 | 5 (SQLi), 5b (XSS), 5c (CSRF), 5d (info disclosure) |
+| TO DO (planned for step 6) | 1 | 7 (Server header) |
 | Deferred (production-only) | 1 | 6a (TLS) |
 | Non-compliant | 0 | — |
 

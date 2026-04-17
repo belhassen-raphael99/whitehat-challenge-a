@@ -59,7 +59,13 @@ whitehat-challenge-a/
 ├── security-audit.md        # Mapping code ↔ référentiel White-Hat (en anglais)
 ├── schema.sql               # Schéma SQL pur (table products + index)
 ├── init_db.py               # Script Python qui exécute schema.sql
-├── app.py                   # App Flask (route / pour l'instant)
+├── app.py                   # App Flask (routes /, /insert)
+├── static/                  # Fichiers statiques servis par Flask
+│   └── style.css            # Styles globaux de l'app
+├── templates/               # Templates Jinja2
+│   ├── base.html            # Layout commun (header, nav, footer)
+│   ├── home.html            # Page d'accueil
+│   └── insert.html          # Formulaire d'insertion (vulnérable)
 └── database.db              # Base SQLite générée (NON commitée)
 ```
 
@@ -72,7 +78,7 @@ whitehat-challenge-a/
 | 1 | Setup environnement (venv, Flask, git) | ✅ FAIT |
 | 2 | Schéma DB SQLite + script init | ✅ FAIT |
 | 3 | App Flask minimale qui tourne | ✅ FAIT |
-| 4 | Page insertion (volontairement vulnérable) | ⬜ À faire |
+| 4 | Page insertion (volontairement vulnérable) | ✅ FAIT (4 vulns démontrées) |
 | 5 | Page recherche (volontairement vulnérable) | ⬜ À faire |
 | 6 | Sécurisation des 6 vulnérabilités identifiées | ⬜ À faire |
 | 7 | Tests croisés (avant/après par vuln) | ⬜ À faire |
@@ -111,12 +117,12 @@ whitehat-challenge-a/
 
 | # | Vuln | Statut | Méthode de protection | Payload de test |
 |---|---|---|---|---|
-| 1 | SQL Injection | ⬜ | — | — |
-| 2 | XSS | ⬜ | — | — |
-| 3 | CSRF | ⬜ | — | — |
-| 4 | Clickjacking | ⬜ | — | — |
-| 5 | Security Misconfiguration | ⬜ | — | — |
-| 6 | Sensitive Data Exposure | ⬜ | — | — |
+| 1 | SQL Injection | 🔴 EXPOSÉE (étape 4) | À fixer étape 6 | `Hack', 0); DROP TABLE products; --` → table effacée |
+| 2 | XSS (stocké) | 🔴 EXPOSÉE (étape 4-5) | À fixer étape 6 | `<img src=x onerror=alert(1)>` stocké en DB |
+| 3 | CSRF | 🔴 EXPOSÉE (étape 4) | À fixer étape 6 | Aucun token sur le formulaire d'insertion |
+| 4 | Clickjacking | 🔴 EXPOSÉE | À fixer étape 6 | Aucun header X-Frame-Options |
+| 5 | Security Misconfiguration | 🔴 EXPOSÉE | À fixer étape 6 | `debug=True`, headers Server leakés, pas de CSP |
+| 6 | Sensitive Data Exposure | 🔴 EXPOSÉE (étape 4) | À fixer étape 6 | DB error renvoyé brut, version stack dans header |
 
 ---
 
@@ -210,6 +216,29 @@ R : Le header `Server: Werkzeug/3.1.8 Python/3.14.4` révèle ma stack et mes ve
 
 **Q : Pourquoi `python app.py` plutôt que `flask run` ?**
 R : Avec `python app.py`, toute la config (host, port, debug) est explicite dans le code Python. `flask run` cache la config dans des variables d'environnement (`FLASK_APP`, `FLASK_DEBUG`, etc.) → moins lisible, plus de "magie". Pour un projet pédagogique destiné à être audité, l'explicite gagne.
+
+### Étape 4 (page insertion vulnérable)
+
+**Q : Pourquoi tu as introduit du code volontairement vulnérable ?**
+R : Pour pouvoir prouver, en étape 6, que ma protection fonctionne réellement. La démarche : (1) j'écris la version vulnérable, (2) je joue l'attaque, (3) je montre qu'elle marche, (4) j'écris la version sécurisée, (5) je rejoue la même attaque, (6) je montre qu'elle échoue maintenant. C'est ça la **preuve concrète**, pas juste de l'incantation.
+
+**Q : Tu as utilisé `executescript()` au lieu de `execute()` — c'est exprès ?**
+R : Oui, et c'est important. `execute()` n'autorise qu'une seule instruction SQL → impossible d'enchaîner un `INSERT; DROP TABLE;`. `executescript()` autorise le multi-statement → la SQLi devient catastrophique (DROP TABLE possible). J'ai voulu reproduire le **pire cas réaliste** d'une SQLi pour que la démo soit éclatante.
+
+**Q : Quel payload SQLi as-tu démontré ?**
+R : `name=Hack', 0); DROP TABLE products; --`. La SQL construite devient : `INSERT INTO products (name, price) VALUES ('Hack', 0); DROP TABLE products; --', 0)`. Le `'` ferme la string SQL, le `;` enchaîne, le `DROP TABLE` détruit la table, le `--` commente la fin. Résultat : table products effacée.
+
+**Q : Et l'XSS ?**
+R : J'ai stocké `<img src=x onerror=alert(1)>` comme nom de produit. La DB le stocke verbatim (juste du texte 30 chars, conforme à toutes les contraintes). Quand on l'affichera (étape 5), si on n'échappe pas, le navigateur exécutera le JS. C'est de la **stored XSS** — la pire variante car elle persiste pour tous les visiteurs.
+
+**Q : Pourquoi les CHECK constraints DB n'ont pas bloqué l'XSS ?**
+R : Parce qu'XSS et SQLi sont des attaques **différentes**. CHECK constraints valident la **structure** des données (longueur, signe, valeurs autorisées). Elles ne savent pas ce qu'est du HTML/JS. Une couche de défense ne couvre qu'un type d'attaque — c'est pour ça qu'on combine plusieurs couches.
+
+**Q : Pourquoi pas de CSRF token sur ton formulaire d'insertion ?**
+R : C'est délibéré pour démontrer la vuln. Sans token, n'importe quel site externe peut héberger un formulaire qui POST vers mon `/insert`. Si un utilisateur visite ce site malveillant pendant qu'il est connecté chez moi (même sans clic, possible via auto-submit), un produit s'insère sans son consentement. Sera fixé étape 6 avec Flask-WTF.
+
+**Q : Le message d'erreur DB est renvoyé brut au client. Pourquoi c'est grave ?**
+R : Sensitive Data Exposure (CWE-209). Un message du genre `CHECK constraint failed: price >= 0` ou `no such table: products` révèle ma structure DB et mes contraintes à l'attaquant. Il peut affiner ses payloads. Bonne pratique : message générique côté client (`"An error occurred"`), détails dans les logs serveur.
 
 (Sera enrichi à chaque étape.)
 
