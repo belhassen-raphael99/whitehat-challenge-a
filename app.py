@@ -55,7 +55,9 @@ def insert():
 
     if request.method == "POST":
         name = request.form["name"]
-        price = request.form["price"]
+        # Convert user-facing price (e.g. "9.99") to cents (999) for INTEGER storage.
+        # round() avoids float drift: float("9.99") * 100 = 998.9999... without it.
+        price = int(round(float(request.form["price"]) * 100))
 
         # VULN-1: f-string concatenation + executescript = SQLi paradise.
         # Same input could break out of the value and run arbitrary SQL,

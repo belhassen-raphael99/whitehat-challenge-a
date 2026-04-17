@@ -21,9 +21,9 @@
     </div>
 
     <div class="field">
-      <label for="price">Price (in cents)</label>
-      <span class="hint">Stored as INTEGER to avoid float rounding errors. e.g. 9.99 EUR &rarr; 999</span>
-      <input type="number" id="price" name="price" min="0" step="1" required>
+      <label for="price">Price ($)</label>
+      <span class="hint">e.g. 9.99 &mdash; stored internally as cents to avoid rounding errors</span>
+      <input type="number" id="price" name="price" min="0" step="0.01" placeholder="0.00" required>
     </div>
 
     <button type="submit">Insert product</button>
