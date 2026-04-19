@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+
+{% block title %}Search products — Whitehat Challenge A{% endblock %}
+
+{% block content %}
+<div class="card">
+  <h2>Search products</h2>
+
+  <form method="GET" action="{{ url_for('search') }}">
+    <div class="search-row">
+      <input
+        type="text"
+        name="q"
+        value="{{ q }}"
+        placeholder="Search by product name…"
+        autocomplete="off"
+      >
+      <button type="submit">Search</button>
+    </div>
+  </form>
+
+  {% if q %}
+    <div class="results-meta">
+      {% if results %}
+        {{ results|length }} result{{ 's' if results|length != 1 }} for
+        <strong>{{ q }}</strong>  {# ← VULN-2: q is NOT escaped here for the label #}
+      {% else %}
+        No results for <strong>{{ q }}</strong>
+      {% endif %}
+    </div>
+  {% endif %}
+
+  {% if results %}
+  <table class="results-table">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Product name</th>
+        <th>Price</th>
+        <th>Added</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in results %}
+      <tr>
+        <td class="id">{{ row[0] }}</td>
+        {# VULN-2: | safe disables Jinja2 auto-escape → stored XSS fires here #}
+        <td class="name">{{ row[1] | safe }}</td>
+        <td class="price">${{ "%.2f" % (row[2] / 100) }}</td>
+        <td class="date">{{ row[3][:10] }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% elif q %}
+    <p class="empty">No products found matching your query.</p>
+  {% endif %}
+</div>
+{% endblock %}

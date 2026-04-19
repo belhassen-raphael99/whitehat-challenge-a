@@ -65,7 +65,8 @@ whitehat-challenge-a/
 ├── templates/               # Templates Jinja2
 │   ├── base.html            # Layout commun (header, nav, footer)
 │   ├── home.html            # Page d'accueil
-│   └── insert.html          # Formulaire d'insertion (vulnérable)
+│   ├── insert.html          # Formulaire d'insertion (vulnérable)
+│   └── search.html          # Page de recherche (vulnérable — XSS via | safe)
 └── database.db              # Base SQLite générée (NON commitée)
 ```
 
@@ -79,7 +80,7 @@ whitehat-challenge-a/
 | 2 | Schéma DB SQLite + script init | ✅ FAIT |
 | 3 | App Flask minimale qui tourne | ✅ FAIT |
 | 4 | Page insertion (volontairement vulnérable) | ✅ FAIT (4 vulns démontrées) |
-| 5 | Page recherche (volontairement vulnérable) | ⬜ À faire |
+| 5 | Page recherche (volontairement vulnérable) | ✅ FAIT (XSS live + SQLi UNION) |
 | 6 | Sécurisation des 6 vulnérabilités identifiées | ⬜ À faire |
 | 7 | Tests croisés (avant/après par vuln) | ⬜ À faire |
 | 8 | README final orienté recruteur | ⬜ À faire |
@@ -239,6 +240,20 @@ R : C'est délibéré pour démontrer la vuln. Sans token, n'importe quel site e
 
 **Q : Le message d'erreur DB est renvoyé brut au client. Pourquoi c'est grave ?**
 R : Sensitive Data Exposure (CWE-209). Un message du genre `CHECK constraint failed: price >= 0` ou `no such table: products` révèle ma structure DB et mes contraintes à l'attaquant. Il peut affiner ses payloads. Bonne pratique : message générique côté client (`"An error occurred"`), détails dans les logs serveur.
+
+### Étape 5 (page de recherche vulnérable)
+
+**Q : Pourquoi l'XSS se déclenche sur la page de recherche et pas sur la page d'insertion ?**
+R : L'XSS stocké ne se déclenche que quand le payload est **affiché** dans le navigateur. La page d'insertion reçoit le nom et le stocke en DB sans le réafficher (juste un redirect). La page de recherche lit le nom depuis la DB et l'injecte dans le HTML avec `| safe` — c'est là que le navigateur exécute le JS.
+
+**Q : C'est quoi `| safe` dans Jinja2 et pourquoi c'est dangereux ?**
+R : `| safe` est un filtre Jinja2 qui marque une valeur comme "HTML de confiance" et désactive l'auto-escape. Normalement `{{ "<script>" }}` devient `&lt;script&gt;` (inoffensif). Avec `{{ "<script>" | safe }}`, c'est injecté tel quel dans le HTML → le navigateur l'exécute. Le fix en étape 6 : supprimer `| safe`. Jinja2 auto-escape fait le reste.
+
+**Q : Décris l'attaque UNION SELECT que tu as démontrée.**
+R : Payload : `x' UNION SELECT 1,'HACKED BY ATTACKER',0,'2026-01-01'--`. La requête construite devient `SELECT id, name, price, created_at FROM products WHERE name LIKE '%x' UNION SELECT 1,'HACKED BY ATTACKER',0,'2026-01-01'--%'`. Le premier SELECT ne retourne rien (pas de 'x'), le UNION injecte une ligne forgée. En prod avec une table `users`, le payload serait `x' UNION SELECT 1,password,0,email FROM users--` → tous les mots de passe dans les résultats.
+
+**Q : Décris l'attaque OR 1=1.**
+R : Payload : `' OR '1'='1`. La requête devient `SELECT ... WHERE name LIKE '%' OR '1'='1%'`. La condition `'1'='1'` est toujours vraie → retourne TOUS les produits quelle que soit la recherche. Classique pour bypasser des filtres ou révéler tous les enregistrements d'une table.
 
 (Sera enrichi à chaque étape.)
 

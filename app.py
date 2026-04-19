@@ -75,6 +75,37 @@ def insert():
     return render_template("insert.html", message=message, error=error)
 
 
+@app.route("/search")
+def search():
+    """
+    Product search page.
+
+    !! INTENTIONALLY VULNERABLE — to be hardened in step 6:
+
+      VULN-1 (SQLi):  search term injected directly into LIKE clause
+                      via f-string. Payload `' OR '1'='1` returns all
+                      rows. UNION SELECT can exfiltrate other data.
+      VULN-2 (XSS):   results rendered with | safe in the template,
+                      disabling Jinja2 auto-escape. The stored payload
+                      <img src=x onerror=alert(1)> fires here.
+      VULN-4 (Info):  raw sqlite3.Error returned to client on failure.
+    """
+    q = request.args.get("q", "")
+    results = []
+
+    if q:
+        # VULN-1: f-string in LIKE clause — SQLi via the search field.
+        query = f"SELECT id, name, price, created_at FROM products WHERE name LIKE '%{q}%'"
+        try:
+            with sqlite3.connect(DB_PATH) as conn:
+                results = conn.execute(query).fetchall()
+        except sqlite3.Error as e:
+            # VULN-4: raw error exposed to client
+            return f"Database error: {e}", 500
+
+    return render_template("search.html", q=q, results=results)
+
+
 if __name__ == "__main__":
     # host=127.0.0.1: bind to localhost only (NOT exposed to network)
     # port=5001: avoid macOS AirPlay collision on default port 5000

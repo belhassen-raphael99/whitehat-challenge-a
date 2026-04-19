@@ -329,6 +329,57 @@ pip install -r requirements.txt
 
 ---
 
+# ÉTAPE 5 — Page de recherche vulnérable
+
+## Q5.1 — Pourquoi l'XSS se déclenche sur la recherche et pas sur l'insertion ?
+
+🟢 **Réponse minimale :**
+"Stored XSS = 2 temps. L'insertion stocke le payload en DB sans le réafficher. La recherche le relit et l'injecte dans le HTML avec `| safe` → le navigateur l'exécute. Le danger est là, pas au moment du stockage."
+
+🔵 **Pour aller plus loin :**
+"C'est la différence entre stored XSS et reflected XSS. Stored : payload persistant en DB, touche tous les visiteurs qui voient la page. Reflected : payload dans l'URL, ne touche que la victime du lien. Stored est plus grave car il persiste."
+
+---
+
+## Q5.2 — Qu'est-ce que `| safe` dans Jinja2 et pourquoi c'est un red flag ?
+
+🟢 **Réponse minimale :**
+"`| safe` désactive l'auto-escape Jinja2. `{{ '<script>' }}` → `&lt;script&gt;` (safe). `{{ '<script>' | safe }}` → `<script>` exécuté par le navigateur."
+
+🔵 **Pour aller plus loin :**
+"En code review, la présence de `| safe` doit toujours lever une alerte : est-ce que la valeur vient d'une source de confiance (HTML hardcodé) ou d'une source utilisateur/DB ? Si c'est une source utilisateur → vulnérabilité XSS. La règle : jamais de `| safe` sur des données dynamiques."
+
+⚠️ **Piège classique :** les devs ajoutent `| safe` parce que leurs balises HTML dans les données ne s'affichent pas correctement. C'est la mauvaise solution. La bonne : utiliser un sanitizer type Bleach (Python) qui autorise certaines balises mais bloque les scripts.
+
+---
+
+## Q5.3 — Décris l'attaque UNION SELECT
+
+🟢 **Réponse minimale :**
+"Payload : `x' UNION SELECT 1,'HACKED',0,'2026-01-01'--`. Le UNION enchaîne un second SELECT avec des valeurs forgées. En prod, `x' UNION SELECT 1,password,0,email FROM users--` exfiltre tous les mots de passe."
+
+🔵 **Pour aller plus loin :**
+"UNION SELECT nécessite que le nombre de colonnes soit identique dans les deux SELECT. D'abord l'attaquant fait du tâtonnement : `' ORDER BY 1--`, `' ORDER BY 2--`, etc. jusqu'à trouver l'erreur → détermine le nombre de colonnes. Ensuite `UNION SELECT NULL,NULL,NULL,NULL--` pour trouver les types. Puis il injecte les vraies valeurs. Processus systématique."
+
+---
+
+## Q5.4 — Décris l'attaque OR 1=1
+
+🟢 **Réponse minimale :**
+"Payload : `' OR '1'='1`. La clause WHERE devient `LIKE '%' OR '1'='1%'` → condition toujours vraie → retourne TOUS les enregistrements."
+
+🔵 **Pour aller plus loin :**
+"En contexte de login (`WHERE username='' AND password=''`), le payload `admin'--` commente le check password : `WHERE username='admin'--' AND password=''` → connexion sans mot de passe. C'est l'SQLi la plus médiatisée (cf. XKCD 'Little Bobby Tables')."
+
+---
+
+## Q5.5 — Quelle différence entre `execute()` et `executescript()` sur la sécurité ?
+
+🟢 **Réponse minimale :**
+"`execute()` n'exécute qu'une seule instruction. `executescript()` exécute un script multi-instructions. En version vulnérable j'ai utilisé `executescript()` sur l'INSERT pour permettre le `DROP TABLE`. Pour la recherche, `execute()` suffit à démontrer l'exfiltration (UNION SELECT)."
+
+---
+
 # ÉTAPE 6 — Sécurisation des 6 vulnérabilités
 
 *(à compléter avec une section par vuln : SQLi, XSS, CSRF, Clickjacking, Misconfig, Sensitive Data)*
