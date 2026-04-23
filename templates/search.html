@@ -44,8 +44,8 @@
       {% for row in results %}
       <tr>
         <td class="id">{{ row[0] }}</td>
-        {# VULN-2: | safe disables Jinja2 auto-escape → stored XSS fires here #}
-        <td class="name">{{ row[1] | safe }}</td>
+        {# FIX VULN-2: no | safe — Jinja2 auto-escape converts < > to &lt; &gt; #}
+        <td class="name">{{ row[1] }}</td>
         <td class="price">${{ "%.2f" % (row[2] / 100) }}</td>
         <td class="date">{{ row[3][:10] }}</td>
       </tr>

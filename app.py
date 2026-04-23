@@ -24,6 +24,29 @@ app = Flask(__name__)
 DB_PATH = Path(__file__).parent / "database.db"
 
 
+# --- Input validation (whitelist approach) ---
+
+def validate_name(name: str) -> tuple[bool, str]:
+    """Whitelist validation for product name."""
+    name = name.strip()
+    if not name:
+        return False, "Product name cannot be empty."
+    if len(name) > 200:
+        return False, "Product name must be 200 characters or less."
+    return True, ""
+
+
+def validate_price(raw: str) -> tuple[bool, str, int]:
+    """Parse and validate price string → cents integer."""
+    try:
+        value = float(raw)
+    except (ValueError, TypeError):
+        return False, "Price must be a valid number.", 0
+    if value < 0:
+        return False, "Price cannot be negative.", 0
+    return True, "", int(round(value * 100))
+
+
 @app.route("/")
 def home() -> str:
     return render_template("home.html")
@@ -34,37 +57,39 @@ def insert():
     """
     Product insertion page.
 
-    !! INTENTIONALLY VULNERABLE — this implementation will be hardened
-    in step 6. Three deliberate weaknesses, marked below:
-
-      FIXED  (SQLi):  parameterized query — name and price are passed
-                      as separate parameters, never interpolated.
-      VULN-2 (XSS):   no input validation/sanitization on `name`.
-      VULN-3 (CSRF):  no CSRF token.
-      VULN-4 (Info):  raw DB error string is returned to the client.
+    FIXED  (SQLi):  parameterized query.
+    FIXED  (XSS):   whitelist validation rejects bad input server-side.
+    VULN-3 (CSRF):  no CSRF token yet — fixed in next commit.
+    VULN-4 (Info):  raw DB error string — fixed in a later commit.
     """
     message = request.args.get("msg")
     error = None
 
     if request.method == "POST":
-        name = request.form["name"]
-        # Convert user-facing price (e.g. "9.99") to cents (999) for INTEGER storage.
-        # round() avoids float drift: float("9.99") * 100 = 998.9999... without it.
-        price = int(round(float(request.form["price"]) * 100))
+        name = request.form.get("name", "")
+        raw_price = request.form.get("price", "")
 
-        # FIX VULN-1: parameterized query.
-        # name and price are passed as a tuple — the DB driver handles escaping.
-        # No f-string, no concatenation, no executescript().
-        try:
-            with sqlite3.connect(DB_PATH) as conn:
-                conn.execute(
-                    "INSERT INTO products (name, price) VALUES (?, ?)",
-                    (name, price)
-                )
-            return redirect(url_for("insert", msg="Product inserted"))
-        except sqlite3.Error as e:
-            # VULN-4: still raw error — fixed in a later commit
-            error = f"Database error: {e}"
+        # FIX VULN-2: server-side whitelist validation before touching the DB.
+        name_ok, name_err = validate_name(name)
+        price_ok, price_err, price = validate_price(raw_price)
+
+        if not name_ok:
+            error = name_err
+        elif not price_ok:
+            error = price_err
+        else:
+            # FIX VULN-1: parameterized query — driver handles escaping.
+            # FIX VULN-2: input already validated above (whitelist).
+            try:
+                with sqlite3.connect(DB_PATH) as conn:
+                    conn.execute(
+                        "INSERT INTO products (name, price) VALUES (?, ?)",
+                        (name, price)
+                    )
+                return redirect(url_for("insert", msg="Product inserted successfully."))
+            except sqlite3.Error as e:
+                # VULN-4: still raw error — fixed in a later commit
+                error = f"Database error: {e}"
 
     return render_template("insert.html", message=message, error=error)
 
