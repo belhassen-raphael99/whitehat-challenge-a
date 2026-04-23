@@ -54,7 +54,8 @@ whitehat-challenge-a/
 ├── venv/                    # Environnement virtuel Python (NON commité)
 ├── requirements.txt         # Dépendances figées (pip freeze)
 ├── CLAUDE.md                # Document maître du projet
-├── README.md                # Doc utilisateur (sera enrichi en étape 8)
+├── README.md                # Doc utilisateur (enrichi en étape 8)
+├── cross-tests.md           # Résultats des tests croisés avant/après (étape 7)
 ├── interview-prep.md        # Fiche de révision Q&R pour l'entretien
 ├── security-audit.md        # Mapping code ↔ référentiel White-Hat (en anglais)
 ├── schema.sql               # Schéma SQL pur (table products + index)
@@ -82,7 +83,7 @@ whitehat-challenge-a/
 | 4 | Page insertion (volontairement vulnérable) | ✅ FAIT (4 vulns démontrées) |
 | 5 | Page recherche (volontairement vulnérable) | ✅ FAIT (XSS live + SQLi UNION) |
 | 6 | Sécurisation des 6 vulnérabilités identifiées | ✅ FAIT (4 commits séparés) |
-| 7 | Tests croisés (avant/après par vuln) | ⬜ À faire |
+| 7 | Tests croisés (avant/après par vuln) | ✅ FAIT (cross-tests.md — 8/8 tests pass) |
 | 8 | README final orienté recruteur | ⬜ À faire |
 | 9 | Revue de simulation d'entretien | ⬜ À faire |
 
