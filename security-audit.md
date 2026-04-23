@@ -31,26 +31,26 @@ The reference defines the following application-level requirements:
 
 ---
 
-## Current code audit (as of step 2)
+## Current code audit (as of step 6)
 
 | # | Requirement | Implementation in this repo | Status | Action |
 |---|---|---|---|---|
 | 1 | Audience identified | Public app, no authentication (per challenge scope). Documented as out-of-scope. | OK (N/A documented) | Mention in interview: production app would define roles. |
 | 2 | Data sensitivity classified | Public catalog data only — no PII, no payment data, no credentials. | OK (N/A documented) | — |
-| 3a | Whitelist by default | DB level: `CHECK (length(name) > 0 AND length(name) <= 200)` and `CHECK (price >= 0)`. Flask level: not yet (vulnerable phase). | Partial | Add explicit Flask-side validation in step 6. |
+| 3a | Whitelist by default | DB level: `CHECK (length(name) > 0 AND length(name) <= 200)` and `CHECK (price >= 0)`. Flask level: `validate_name()` rejects empty/overlong names; `validate_price()` rejects non-numeric and negative values. FIXED in step 6 (commit 0ad0694). | OK (both layers) | — |
 | 3b | Blacklist only when forced | Not used. | OK (compliant by absence) | — |
-| 3c | Range / logical checks | DB enforces `price >= 0` and `length(name) BETWEEN 1 AND 200`. | OK (DB level) | Mirror at Flask level in step 6. |
+| 3c | Range / logical checks | DB enforces `price >= 0` and `length(name) BETWEEN 1 AND 200`. Flask mirrors: `len(name) > 200` rejected, `value < 0` rejected. FIXED in step 6. | OK (both layers) | — |
 | 3d | Permission check before action | No authenticated users in scope. | OK (N/A documented) | Mention in interview. |
 | 4a | Minimal DB user privileges | SQLite is file-based and single-user — no concept of DB user. | OK (N/A by design) | Mention in interview that on PostgreSQL/MySQL we would use a dedicated user with `GRANT INSERT, SELECT` only — never `DROP`, `ALTER`. |
 | 4b | Encrypted credentials (AES-256) | Not applicable: SQLite has no DB credentials. | OK (N/A by design) | Mention in interview. |
-| 5 | Parameterized queries | Step 4 implements the deliberately vulnerable version: `f"INSERT INTO products (name, price) VALUES ('{name}', {price})"` executed via `executescript()`. Demonstrated to drop the `products` table with payload `Hack', 0); DROP TABLE products; --`. | EXPOSED (step 4) — TO DO (step 6) | Step 6.1: replace with `execute("INSERT ... VALUES (?, ?)", (name, price))`. |
-| 5b | Stored XSS protection | Step 4 stores user input verbatim. Demonstrated by inserting `<img src=x onerror=alert(1)>` as a product name — accepted by all DB CHECK constraints (it is just text). Will fire when displayed in step 5 search results without escaping. | EXPOSED (step 4-5) — TO DO (step 6) | Step 6.2: rely on Jinja2 auto-escape (no `\|safe`), plus add server-side validation. |
-| 5c | CSRF protection | The `/insert` form has no CSRF token. Any cross-origin POST can insert products. | EXPOSED (step 4) — TO DO (step 6) | Step 6.3: add Flask-WTF with `CSRFProtect(app)`. |
-| 5d | Generic error messages | Raw `sqlite3.Error` is rendered to the client on insert failure (CWE-209 information exposure through error message). | EXPOSED (step 4) — TO DO (step 6) | Step 6: catch DB errors, log details server-side, return generic message to client. |
+| 5 | Parameterized queries | FIXED in step 6 (commit 4efd292). INSERT uses `execute("INSERT ... VALUES (?, ?)", (name, price))`. SEARCH uses `execute("... LIKE ?", (f"%{q}%",))`. Verified: DROP TABLE payload treated as literal string; OR 1=1 returns 0 rows; UNION SELECT injects nothing.: `f"INSERT INTO products (name, price) VALUES ('{name}', {price})"` executed via `executescript()`. Demonstrated to drop the `products` table with payload `Hack', 0); DROP TABLE products; --`. | EXPOSED (step 4) — TO DO (step 6) | Step 6.1: replace with `execute("INSERT ... VALUES (?, ?)", (name, price))`. |
+| 5b | Stored XSS protection | FIXED in step 6 (commit 0ad0694). `\| safe` removed from `search.html`. Jinja2 auto-escape converts `<img onerror=...>` to `&lt;img onerror=...&gt;`. Server-side `validate_name()` adds an additional whitelist layer. Verified: XSS payload stored in step 4 is now rendered inert. | FIXED | — |
+| 5c | CSRF protection | FIXED in step 6 (commit 067ca33). Flask-WTF `CSRFProtect(app)` enabled. `insert.html` includes `{{ csrf_token() }}` hidden field. POST without valid token → HTTP 400. Verified via curl: cross-origin POST rejected before reaching SQL layer. | FIXED | — |
+| 5d | Generic error messages | FIXED in step 6 (commit 39988d7). `sqlite3.Error` is caught in both `/insert` and `/search`. Real error is passed to `logger.error()` (server-side only). Client receives generic string: `"An error occurred. Please try again."` Custom `@app.errorhandler(400/404/500)` returns `error.html` with no stack trace. | FIXED | — |
 | 6a | TLS / HTTPS channel | Flask dev server runs HTTP on 127.0.0.1:5001. Not configured for HTTPS. | Deferred | Document in step 6 (Security Misconfiguration) and final README. Production deployment would terminate TLS at a reverse proxy (nginx/Cloudflare) or use `gunicorn` + cert. |
 | 6b | Authentication mechanism | No authentication in scope. | OK (N/A documented) | Mention in interview. |
-| 7  | Server header information disclosure (added at step 3) | `curl -i` reveals `Server: Werkzeug/3.1.8 Python/3.14.4` — leaks framework, version, and Python version. CWE-200. | TO DO (step 6) | Strip or override `Server` header via Flask response middleware. |
-| 8  | Werkzeug interactive debugger (added at step 3) | `debug=True` is enabled for local development. The Werkzeug debugger allows arbitrary Python execution if the app is reachable from the network. Currently mitigated by `host=127.0.0.1` (loopback only). | OK in dev (mitigated by binding) — TO DO for prod | In step 6, force `debug=False` for any non-dev environment, document in README. |
+| 7  | Server header information disclosure (added at step 3) | FIXED in step 6 (commit 39988d7). Two-layer fix: (1) `WSGIRequestHandler.server_version = "Web Server"` and `version_string = lambda self: "Web Server"` overrides Werkzeug's connection-level header; (2) `@after_request` sets `response.headers["Server"] = "Web Server"` for app-level responses. Verified with `curl -i`: header now reads `Server: Web Server`. | FIXED | — |
+| 8  | Werkzeug interactive debugger (added at step 3) | FIXED in step 6 (commit 39988d7). `debug` mode now controlled by environment: `is_production = os.environ.get("FLASK_ENV") == "production"`, then `app.run(debug=not is_production)`. Running with `FLASK_ENV=production` disables debug, removes RCE risk. Dev default remains `debug=True` on loopback only (127.0.0.1). | OK (env-controlled) | Set `FLASK_ENV=production` before any non-local deployment. |
 
 ---
 
@@ -58,10 +58,7 @@ The reference defines the following application-level requirements:
 
 | Status | Count | Items |
 |---|---|---|
-| OK (compliant or N/A documented) | 8 | 1, 2, 3b, 3d, 4a, 4b, 6b, 8 (dev only) |
-| Partial (DB layer only, Flask layer pending) | 2 | 3a, 3c |
-| EXPOSED (intentional, will be fixed in step 6) | 4 | 5 (SQLi), 5b (XSS), 5c (CSRF), 5d (info disclosure) |
-| TO DO (planned for step 6) | 1 | 7 (Server header) |
+| OK / FIXED (compliant or N/A documented) | 14 | 1, 2, 3a, 3b, 3c, 3d, 4a, 4b, 5 (SQLi), 5b (XSS), 5c (CSRF), 5d (info disclosure), 6b, 7 (Server header), 8 (env-controlled) |
 | Deferred (production-only) | 1 | 6a (TLS) |
 | Non-compliant | 0 | — |
 
@@ -91,15 +88,16 @@ This goes beyond the literal requirement of the reference document.
 When asked "did you follow the secure development guidelines?", answer:
 
 > "Yes — I mapped my code against the reference document and produced
-> a written audit (`security-audit.md`). 7 of 11 items are fully
-> compliant. 1 item is partial (input validation: I added DB-level
-> CHECK constraints already, Flask-level validation is added in
-> step 6 as part of the security hardening pass). 1 item is the
-> central anti-SQLi requirement (parameterized queries) which is
-> demonstrated with a deliberate vulnerable-then-fixed approach to
-> prove the protection works. 1 item (TLS) is deferred to production
-> deployment and documented in the README. The remaining items are
-> N/A by scope (no authentication, no DB user concept with SQLite)."
+> a written audit (`security-audit.md`). As of step 6, 14 of 15 items
+> are fully compliant or N/A documented. The single deferred item (TLS)
+> is intentionally out-of-scope for a local dev app and documented in
+> the README — production deployment would terminate TLS at nginx or
+> Cloudflare. The 4 central vulns (SQLi, XSS, CSRF, info disclosure)
+> were first deliberately demonstrated on a vulnerable version, then
+> fixed with separate atomic commits — so the protection is proven,
+> not just assumed. I also added defense-in-depth beyond the reference
+> (DB CHECK constraints, CSP header, X-Frame-Options, Server header
+> masking, environment-controlled debug mode)."
 
 This shows:
 - You read their document.

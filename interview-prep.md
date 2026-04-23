@@ -380,9 +380,91 @@ pip install -r requirements.txt
 
 ---
 
-# ÉTAPE 6 — Sécurisation des 6 vulnérabilités
+# ÉTAPE 6 — Sécurisation des vulnérabilités
 
-*(à compléter avec une section par vuln : SQLi, XSS, CSRF, Clickjacking, Misconfig, Sensitive Data)*
+## Q6.1 — Comment as-tu fixé la SQL Injection ?
+
+🟢 **Réponse minimale :**
+"Parameterized queries : `conn.execute('INSERT INTO products (name, price) VALUES (?, ?)', (name, price))`. Le driver SQLite3 passe les valeurs comme paramètres, jamais dans le texte SQL. Le payload `Hack', 0); DROP TABLE products; --` est traité comme une chaîne littérale."
+
+🔵 **Pour aller plus loin :**
+"J'ai aussi supprimé `executescript()` de la route `/insert` — cette fonction accepte du SQL multi-statements, donc même sans concaténation, l'utiliser sur des inputs utilisateur est une mauvaise pratique structurelle. Seul `init_db.py` l'utilise, sur un fichier .sql géré par nous."
+
+⚠️ **Piège :** ne dis pas "j'ai sanitisé l'input" ou "j'ai échappé les quotes". La bonne réponse est **séparation du SQL et des données**, pas manipulation de chaînes.
+
+---
+
+## Q6.2 — Comment as-tu fixé le XSS stocké ?
+
+🟢 **Réponse minimale :**
+"Deux actions : (1) supprimé `| safe` dans `search.html` — Jinja2 auto-escape est maintenant actif, `<img onerror=...>` devient `&lt;img onerror=...&gt;`. (2) ajouté validation Flask whitelist qui rejette les noms vides et > 200 chars."
+
+🔵 **Pour aller plus loin :**
+"La règle d'or XSS : **escape à la sortie, valide à l'entrée**. L'escape à la sortie (Jinja2) est la défense primaire car elle fonctionne quel que soit l'input. La validation à l'entrée est un layer supplémentaire — mais elle ne remplace jamais l'escape, car un futur dev pourrait ajouter une route sans validation."
+
+⚠️ **Piège :** ne jamais utiliser `| safe` sur des données provenant de la DB ou d'un formulaire. C'est un signal d'alarme en code review.
+
+---
+
+## Q6.3 — Comment as-tu fixé le CSRF ?
+
+🟢 **Réponse minimale :**
+"Flask-WTF avec `CSRFProtect(app)`. Un token signé est généré côté serveur, inséré dans le formulaire HTML via `{{ csrf_token() }}`, et validé à chaque POST. Un site externe ne peut pas lire ce token (same-origin policy) → son POST forgé est rejeté avec HTTP 400."
+
+🔵 **Pour aller plus loin :**
+"Le token est signé avec la `SECRET_KEY` de Flask via HMAC. Même si un attaquant intercepte un token, il ne peut pas en forger un nouveau sans la clé. En prod, la `SECRET_KEY` doit être une valeur aléatoire forte, stockée en variable d'environnement, jamais hardcodée."
+
+⚠️ **Piège :** le CSRF ne protège pas contre un attaquant qui a déjà accès au navigateur de la victime (XSS). CSRF et XSS sont des attaques différentes avec des défenses différentes.
+
+---
+
+## Q6.4 — Comment as-tu fixé le Server header (information disclosure) ?
+
+🟢 **Réponse minimale :**
+"Double fix : `WSGIRequestHandler.server_version = 'Web Server'` + `version_string = lambda self: 'Web Server'` pour le header injecté au niveau TCP par Werkzeug. Et `response.headers['Server'] = 'Web Server'` dans `@after_request` pour les headers applicatifs. Résultat : `curl -i` renvoie `Server: Web Server`."
+
+🔵 **Pour aller plus loin :**
+"Il y avait deux sources différentes du header : le serveur Werkzeug (connection-level) et Flask (response-level). Les deux doivent être masqués. En prod avec Gunicorn derrière nginx, c'est nginx qui gère le `Server` header → on le supprime dans la config nginx avec `server_tokens off;`."
+
+---
+
+## Q6.5 — Comment as-tu fixé les messages d'erreur verbeux ?
+
+🟢 **Réponse minimale :**
+"Catch des `sqlite3.Error` dans les deux routes. Le message d'erreur réel est logué côté serveur avec `logger.error()`. Le client reçoit uniquement `'An error occurred. Please try again.'`. Des error handlers Flask personnalisés (400, 404, 500) affichent un template `error.html` générique — jamais de stack trace."
+
+🔵 **Pour aller plus loin :**
+"C'est CWE-209 : Information Exposure Through an Error Message. Sans ce fix, un message comme `CHECK constraint failed: price >= 0` révèle le nom de la contrainte et la structure DB. Un message comme `no such table: products` confirme que la table s'appelle 'products'. Ces infos servent à affiner les payloads."
+
+---
+
+## Q6.6 — C'est quoi CSP (Content Security Policy) et pourquoi tu l'as ajouté ?
+
+🟢 **Réponse minimale :**
+"CSP est un header HTTP qui dit au navigateur quelles sources de code/médias sont autorisées. Notre CSP : `default-src 'self'; script-src 'none'; object-src 'none'`. Ça interdit l'exécution de tout JS inline ou externe. Même si l'XSS passait (bug futur), CSP bloque l'exécution en dernier recours."
+
+🔵 **Pour aller plus loin :**
+"C'est de la defense in depth au niveau navigateur. Ordre des couches pour XSS : (1) validation à l'entrée rejette les payloads connus, (2) Jinja2 auto-escape neutralise les balises à l'affichage, (3) CSP empêche l'exécution même si (1) et (2) ont failli. La CSP est la dernière barrière côté client."
+
+---
+
+## Q6.7 — Pourquoi X-Frame-Options: DENY ?
+
+🟢 **Réponse minimale :**
+"Protège contre le Clickjacking : un attaquant ne peut pas intégrer notre app dans un iframe transparent sur son site et tromper l'utilisateur pour qu'il clique sur nos boutons (ex : valider une transaction, insérer un produit). `DENY` interdit tout embedding."
+
+🔵 **Pour aller plus loin :**
+"En 2024, la recommandation moderne est d'utiliser `Content-Security-Policy: frame-ancestors 'none'` plutôt que `X-Frame-Options: DENY` car CSP est plus expressif et plus moderne. On peut avoir les deux pour la compatibilité avec les vieux navigateurs."
+
+---
+
+## Q6.8 — Décris ta démarche de sécurisation globale (résumé)
+
+🟢 **Réponse minimale :**
+"4 commits atomiques, un par vuln : (1) SQLi → parameterized queries, (2) XSS → suppression `|safe` + validation, (3) CSRF → Flask-WTF, (4) headers + debug + erreurs génériques. Chaque commit est indépendant et vérifiable. Avant chaque fix, j'ai rejoué l'attaque pour confirmer qu'elle échoue après."
+
+🔵 **Pour aller plus loin :**
+"L'approche commit-par-vuln est volontaire : ça permet de voir dans le git log exactement quelle ligne de code corrige quelle vulnérabilité. Pour un auditeur ou un reviewer, c'est beaucoup plus lisible qu'un seul commit 'sécurisation globale'."
 
 ---
 

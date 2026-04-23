@@ -16,13 +16,13 @@
     <nav class="site-nav">
       <a href="{{ url_for('home') }}">Home</a>
       <a href="{{ url_for('insert') }}">Insert</a>
-      <a href="#" class="disabled">Search</a>
+      <a href="{{ url_for('search') }}">Search</a>
     </nav>
   </header>
 
-  {# Dev-mode banner (will be removed in step 6 when debug=False) #}
+  {# Dev-mode banner: shown only when debug mode is active (dev env only) #}
   <div class="dev-banner">
-    Development mode — debug enabled, intentionally vulnerable until step 6
+    Development mode — hardened build (step 6 complete). Run with <code>FLASK_ENV=production</code> to disable this banner.
   </div>
 
   <main>

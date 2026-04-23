@@ -81,7 +81,7 @@ whitehat-challenge-a/
 | 3 | App Flask minimale qui tourne | ✅ FAIT |
 | 4 | Page insertion (volontairement vulnérable) | ✅ FAIT (4 vulns démontrées) |
 | 5 | Page recherche (volontairement vulnérable) | ✅ FAIT (XSS live + SQLi UNION) |
-| 6 | Sécurisation des 6 vulnérabilités identifiées | ⬜ À faire |
+| 6 | Sécurisation des 6 vulnérabilités identifiées | ✅ FAIT (4 commits séparés) |
 | 7 | Tests croisés (avant/après par vuln) | ⬜ À faire |
 | 8 | README final orienté recruteur | ⬜ À faire |
 | 9 | Revue de simulation d'entretien | ⬜ À faire |
@@ -118,12 +118,12 @@ whitehat-challenge-a/
 
 | # | Vuln | Statut | Méthode de protection | Payload de test |
 |---|---|---|---|---|
-| 1 | SQL Injection | 🔴 EXPOSÉE (étape 4) | À fixer étape 6 | `Hack', 0); DROP TABLE products; --` → table effacée |
-| 2 | XSS (stocké) | 🔴 EXPOSÉE (étape 4-5) | À fixer étape 6 | `<img src=x onerror=alert(1)>` stocké en DB |
-| 3 | CSRF | 🔴 EXPOSÉE (étape 4) | À fixer étape 6 | Aucun token sur le formulaire d'insertion |
-| 4 | Clickjacking | 🔴 EXPOSÉE | À fixer étape 6 | Aucun header X-Frame-Options |
-| 5 | Security Misconfiguration | 🔴 EXPOSÉE | À fixer étape 6 | `debug=True`, headers Server leakés, pas de CSP |
-| 6 | Sensitive Data Exposure | 🔴 EXPOSÉE (étape 4) | À fixer étape 6 | DB error renvoyé brut, version stack dans header |
+| 1 | SQL Injection | ✅ PATCHÉE (commit 4efd292) | `execute("... VALUES (?, ?)", (name, price))` — driver gère l'escaping | Plus de concaténation, plus de `executescript()` |
+| 2 | XSS (stocké) | ✅ PATCHÉE (commit 0ad0694) | Suppression `\| safe` + validation whitelist Flask | `<img>` s'affiche comme `&lt;img&gt;` — inoffensif |
+| 3 | CSRF | ✅ PATCHÉE (commit 067ca33) | Flask-WTF CSRFProtect + token caché dans le form | POST sans token → HTTP 400 |
+| 4 | Clickjacking | ✅ PATCHÉE (commit 39988d7) | `X-Frame-Options: DENY` via after_request | Aucun iframe possible |
+| 5 | Security Misconfiguration | ✅ PATCHÉE (commit 39988d7) | `debug` depuis env, CSP, Server header masqué | `FLASK_ENV=production` → debug=False |
+| 6 | Sensitive Data Exposure | ✅ PATCHÉE (commit 39988d7) | Messages génériques client + logging serveur | Plus de détails DB dans les réponses HTTP |
 
 ---
 
@@ -255,7 +255,25 @@ R : Payload : `x' UNION SELECT 1,'HACKED BY ATTACKER',0,'2026-01-01'--`. La requ
 **Q : Décris l'attaque OR 1=1.**
 R : Payload : `' OR '1'='1`. La requête devient `SELECT ... WHERE name LIKE '%' OR '1'='1%'`. La condition `'1'='1'` est toujours vraie → retourne TOUS les produits quelle que soit la recherche. Classique pour bypasser des filtres ou révéler tous les enregistrements d'une table.
 
-(Sera enrichi à chaque étape.)
+### Étape 6 (sécurisation)
+
+**Q : Comment as-tu fixé la SQL Injection ?**
+R : Parameterized queries — `conn.execute('INSERT INTO products (name, price) VALUES (?, ?)', (name, price))`. Le driver SQLite3 passe les valeurs comme paramètres, jamais dans le texte SQL. Suppression de `executescript()` qui permettait le multi-statement. Payload `DROP TABLE` est maintenant traité comme une string littérale inoffensive.
+
+**Q : Comment as-tu fixé le XSS stocké ?**
+R : Deux actions combinées : (1) supprimé `| safe` dans `search.html` — Jinja2 auto-escape convertit `<img onerror=...>` en `&lt;img onerror=...&gt;`. (2) Ajouté `validate_name()` Flask qui rejette les inputs invalides côté serveur avant tout contact avec la DB.
+
+**Q : Comment as-tu fixé le CSRF ?**
+R : Flask-WTF `CSRFProtect(app)`. Token signé avec HMAC (via SECRET_KEY), inséré dans le formulaire `{{ csrf_token() }}`, validé à chaque POST. Un site externe ne peut pas lire ce token (same-origin policy) → son POST forgé reçoit HTTP 400 avant d'atteindre la logique SQL.
+
+**Q : Comment as-tu masqué le header Server ?**
+R : Double fix nécessaire : (1) `WSGIRequestHandler.server_version = 'Web Server'` + `version_string = lambda self: 'Web Server'` pour Werkzeug au niveau TCP. (2) `response.headers['Server'] = 'Web Server'` dans `@after_request` pour les responses Flask. En prod, c'est nginx qui gère ça avec `server_tokens off;`.
+
+**Q : Comment as-tu géré les messages d'erreur verbeux ?**
+R : `try/except sqlite3.Error` dans les deux routes — le message réel est logué côté serveur (`logger.error()`), le client reçoit un message générique. Des `@app.errorhandler(400/404/500)` personnalisés rendent `error.html` sans stack trace ni détail DB.
+
+**Q : C'est quoi ta démarche globale pour la sécurisation ?**
+R : 4 commits atomiques, un par vuln, avec messages conventionnels `security(sqli)`, `security(xss)`, `security(csrf)`, `security(headers)`. Chaque fix a été vérifié en rejouant l'attaque originale — si elle échoue, la protection est confirmée. J'ai aussi ajouté des couches beyond-the-spec : CSP header, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, et le debug contrôlé par env var.
 
 ---
 
