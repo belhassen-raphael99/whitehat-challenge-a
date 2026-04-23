@@ -37,18 +37,11 @@ def insert():
     !! INTENTIONALLY VULNERABLE — this implementation will be hardened
     in step 6. Three deliberate weaknesses, marked below:
 
-      VULN-1 (SQLi):  query is built with f-string concatenation
-                      AND uses executescript() to enable multi-statement
-                      payloads (worst-case scenario).
-      VULN-2 (XSS):   no input validation/sanitization on `name`. A
-                      payload like <script>alert(1)</script> is stored
-                      verbatim and will fire when displayed (step 5).
-      VULN-3 (CSRF):  no CSRF token. Any external site can submit a
-                      cross-origin POST and insert a product on behalf
-                      of any visitor.
-      VULN-4 (Info):  raw DB error string is returned to the client on
-                      failure — leaks schema details. Sensitive data
-                      exposure (CWE-209).
+      FIXED  (SQLi):  parameterized query — name and price are passed
+                      as separate parameters, never interpolated.
+      VULN-2 (XSS):   no input validation/sanitization on `name`.
+      VULN-3 (CSRF):  no CSRF token.
+      VULN-4 (Info):  raw DB error string is returned to the client.
     """
     message = request.args.get("msg")
     error = None
@@ -59,17 +52,18 @@ def insert():
         # round() avoids float drift: float("9.99") * 100 = 998.9999... without it.
         price = int(round(float(request.form["price"]) * 100))
 
-        # VULN-1: f-string concatenation + executescript = SQLi paradise.
-        # Same input could break out of the value and run arbitrary SQL,
-        # including DROP TABLE.
-        query = f"INSERT INTO products (name, price) VALUES ('{name}', {price})"
-
+        # FIX VULN-1: parameterized query.
+        # name and price are passed as a tuple — the DB driver handles escaping.
+        # No f-string, no concatenation, no executescript().
         try:
             with sqlite3.connect(DB_PATH) as conn:
-                conn.executescript(query)
+                conn.execute(
+                    "INSERT INTO products (name, price) VALUES (?, ?)",
+                    (name, price)
+                )
             return redirect(url_for("insert", msg="Product inserted"))
         except sqlite3.Error as e:
-            # VULN-4: raw error message returned to user.
+            # VULN-4: still raw error — fixed in a later commit
             error = f"Database error: {e}"
 
     return render_template("insert.html", message=message, error=error)
@@ -82,25 +76,25 @@ def search():
 
     !! INTENTIONALLY VULNERABLE — to be hardened in step 6:
 
-      VULN-1 (SQLi):  search term injected directly into LIKE clause
-                      via f-string. Payload `' OR '1'='1` returns all
-                      rows. UNION SELECT can exfiltrate other data.
-      VULN-2 (XSS):   results rendered with | safe in the template,
-                      disabling Jinja2 auto-escape. The stored payload
-                      <img src=x onerror=alert(1)> fires here.
+      FIXED  (SQLi):  parameterized LIKE — pattern passed as parameter.
+      VULN-2 (XSS):   results rendered with | safe in the template.
       VULN-4 (Info):  raw sqlite3.Error returned to client on failure.
     """
     q = request.args.get("q", "")
     results = []
 
     if q:
-        # VULN-1: f-string in LIKE clause — SQLi via the search field.
-        query = f"SELECT id, name, price, created_at FROM products WHERE name LIKE '%{q}%'"
+        # FIX VULN-1: parameterized LIKE query.
+        # The wildcard pattern f"%{q}%" is passed as a parameter, not concatenated.
+        # OR 1=1 and UNION SELECT payloads are now treated as literal strings.
         try:
             with sqlite3.connect(DB_PATH) as conn:
-                results = conn.execute(query).fetchall()
+                results = conn.execute(
+                    "SELECT id, name, price, created_at FROM products WHERE name LIKE ?",
+                    (f"%{q}%",)
+                ).fetchall()
         except sqlite3.Error as e:
-            # VULN-4: raw error exposed to client
+            # VULN-4: still raw error — fixed in a later commit
             return f"Database error: {e}", 500
 
     return render_template("search.html", q=q, results=results)
