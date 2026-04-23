@@ -14,12 +14,26 @@ WARNING (step 4): the /insert route is INTENTIONALLY VULNERABLE to
 SQL Injection, stored XSS, and CSRF. These vulnerabilities are
 demonstrated and then fixed in step 6. See security-audit.md.
 """
+import os
 import sqlite3
 from pathlib import Path
 
 from flask import Flask, render_template, request, redirect, url_for
+from flask_wtf.csrf import CSRFProtect
 
 app = Flask(__name__)
+
+# SECRET_KEY is required by Flask-WTF to sign CSRF tokens.
+# In production: set via environment variable, never hardcode.
+# The fallback here is for local development only.
+app.config["SECRET_KEY"] = os.environ.get(
+    "SECRET_KEY", "dev-only-key-CHANGE-IN-PRODUCTION"
+)
+
+# FIX VULN-3: CSRF protection.
+# CSRFProtect validates the csrf_token field on every POST/PUT/PATCH/DELETE.
+# A missing or invalid token returns HTTP 400 — the request is rejected.
+csrf = CSRFProtect(app)
 
 DB_PATH = Path(__file__).parent / "database.db"
 

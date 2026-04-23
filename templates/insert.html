@@ -14,6 +14,11 @@
   {% endif %}
 
   <form method="POST" action="{{ url_for('insert') }}">
+    {# FIX VULN-3: CSRF token — Flask-WTF validates this on every POST.
+       A cross-origin request from a malicious site cannot read this value
+       (same-origin policy), so its forged POST will be rejected with 400. #}
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
     <div class="field">
       <label for="name">Product name</label>
       <span class="hint">Up to 200 characters</span>
