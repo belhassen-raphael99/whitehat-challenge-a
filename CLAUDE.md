@@ -84,7 +84,7 @@ whitehat-challenge-a/
 | 5 | Page recherche (volontairement vulnérable) | ✅ FAIT (XSS live + SQLi UNION) |
 | 6 | Sécurisation des 6 vulnérabilités identifiées | ✅ FAIT (4 commits séparés) |
 | 7 | Tests croisés (avant/après par vuln) | ✅ FAIT (cross-tests.md — 8/8 tests pass) |
-| 8 | README final orienté recruteur | ⬜ À faire |
+| 8 | README final orienté recruteur | ✅ FAIT |
 | 9 | Revue de simulation d'entretien | ⬜ À faire |
 
 ---
