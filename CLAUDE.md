@@ -56,6 +56,7 @@ whitehat-challenge-a/
 ├── CLAUDE.md                # Document maître du projet
 ├── README.md                # Doc utilisateur (enrichi en étape 8)
 ├── cross-tests.md           # Résultats des tests croisés avant/après (étape 7)
+├── presentation-guide.md    # Guide ligne par ligne pour l'entretien (étape 9)
 ├── interview-prep.md        # Fiche de révision Q&R pour l'entretien
 ├── security-audit.md        # Mapping code ↔ référentiel White-Hat (en anglais)
 ├── schema.sql               # Schéma SQL pur (table products + index)
@@ -85,7 +86,7 @@ whitehat-challenge-a/
 | 6 | Sécurisation des 6 vulnérabilités identifiées | ✅ FAIT (4 commits séparés) |
 | 7 | Tests croisés (avant/après par vuln) | ✅ FAIT (cross-tests.md — 8/8 tests pass) |
 | 8 | README final orienté recruteur | ✅ FAIT |
-| 9 | Revue de simulation d'entretien | ⬜ À faire |
+| 9 | Revue de simulation d'entretien | ✅ FAIT (presentation-guide.md) |
 
 ---
 
