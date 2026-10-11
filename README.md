@@ -1,4 +1,23 @@
-# Whitehat Challenge A
+<p align="center">
+  <img src="docs/readme/search.jpg" alt="Whitehat Challenge A — the product search page" width="100%">
+</p>
+
+<h1 align="center">Whitehat Challenge A</h1>
+
+<p align="center">
+  <b>A deliberately vulnerable Flask app, exploited with real payloads, then hardened — and cross-tested to prove every protection holds.</b><br>
+  <sub>Technical take-home for White-Hat (EPAM) · Flask 3.1 · Python 3.14 · SQLite</sub>
+</p>
+
+<p align="center">
+  <img alt="Python 3.14" src="https://img.shields.io/badge/Python-3.14-0b1233?style=flat-square&logo=python&logoColor=white">
+  <img alt="Flask 3.1" src="https://img.shields.io/badge/Flask-3.1-0b1233?style=flat-square&logo=flask&logoColor=white">
+  <img alt="SQLite" src="https://img.shields.io/badge/SQLite-stdlib-0b1233?style=flat-square&logo=sqlite&logoColor=white">
+  <img alt="SQLi, XSS, CSRF" src="https://img.shields.io/badge/fixed-SQLi%20%C2%B7%20XSS%20%C2%B7%20CSRF%20%C2%B7%20clickjacking-2e7d32?style=flat-square">
+  <img alt="CSP" src="https://img.shields.io/badge/CSP-script--src%20'none'-0b1233?style=flat-square">
+</p>
+
+---
 
 Secure product management web application — insert and search products via a
 Flask + SQLite backend.
@@ -7,6 +26,23 @@ Built as a technical take-home for **White-Hat (EPAM)** to demonstrate a
 secure-by-design approach: vulnerabilities are first deliberately introduced and
 exploited, then fixed with isolated commits, then cross-tested to prove the
 protections work.
+
+## The two attacks, after the fix
+
+<p align="center">
+  <img src="docs/readme/xss.jpg" alt="A stored XSS payload rendered as inert text, not executed" width="100%">
+  <br><sub><code>&lt;script&gt;alert(1)&lt;/script&gt;</code> stored in the database and rendered back — as <b>text</b>. Jinja2 auto-escape turns it into <code>&amp;lt;script&amp;gt;</code>, and the CSP would refuse to run it even if it got through.</sub>
+</p>
+
+<p align="center">
+  <img src="docs/readme/sqli.jpg" alt="A SQL injection attempt returning no results instead of the whole table" width="100%">
+  <br><sub><code>' OR '1'='1</code> in the search box. With a concatenated query this returns every row; with a parameterized one it is just a string that matches nothing.</sub>
+</p>
+
+<p align="center">
+  <img src="docs/readme/insert.jpg" alt="The insert form, with its CSRF token and server-side validation" width="100%">
+  <br><sub>Every POST carries a signed CSRF token. A forged cross-origin request cannot read it and is rejected with HTTP 400 before reaching any application logic.</sub>
+</p>
 
 ---
 
